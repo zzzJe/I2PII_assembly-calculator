@@ -4,3 +4,6 @@ assembly_parser/README.pdf
 out/inputs/*
 out/outputs/*
 out/app.exe
+out/result.out
+*/test.c
+a.exe
