@@ -30,7 +30,7 @@ int evaluateTree(BTNode* root) {
                     retval = lv * rv;
                 } else if (strcmp(root->lexeme, "/") == 0) {
                     if (rv == 0)
-                        error(DIVZERO);
+                        error(DIVZERO, "");
                     retval = lv / rv;
                 }
                 break;

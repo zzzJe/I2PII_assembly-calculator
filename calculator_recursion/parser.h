@@ -14,10 +14,10 @@
  * Macro to print error message and exit the program
  * This will also print where you called it in your program
  */
-#define error(errorNum) { \
+#define error(errorNum, detail) { \
     if (PRINTERR) \
-        fprintf(stderr, "error() called at %s:%d: ", __FILE__, __LINE__); \
-    err(errorNum); \
+        fprintf(stderr, "error() called at %s:%d\n", __FILE__, __LINE__); \
+    err(errorNum, detail); \
 }
 
 /**
@@ -106,6 +106,6 @@ extern BTNode* expr_tail(BTNode *left);
 extern void statement(void);
 
 // Print error message and exit the program
-extern void err(ErrorType errorNum);
+extern void err(ErrorType errorNum, char* detail);
 
 #endif // __PARSER__

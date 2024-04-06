@@ -13,28 +13,47 @@
  * - lastly use `advance()` to hot update `lexeme[]`                      *
  *   in order to make `lexeme[]` to-be-processed                          *
  * - grammer is the following                                             *
- *   - statement                                                          *
+ *   00. statement                                                        *
  *     - ENDFILE                                                          *
  *     - END                                                              *
- *     - expr END                                                         *
- *   - expr                                                               *
- *     - term expr_tail                                                   *
- *   - expr_tail                                                          *
- *     - ADDSUB term expr_tail                                            *
+ *     - assign_expr END                                                  *
+ *   01. assign_expr                                                      *
+ *     - ID ASSIGN assign_expr                                            *
+ *     - ID ADDSUB_ASSIGN assign_expr                                     *
+ *     - or_expr                                                          *
+ *   02. or_expr                                                          *
+ *     - xor_expr or_expr_tail                                            *
+ *   03. or_expr_tail                                                     *
+ *     - BIT_OR xor_expr or_expr_tail                                     *
  *     - NiL                                                              *
- *   - term                                                               *
- *     - factor term_tail                                                 *
- *   - term_tail                                                          *
- *     - MULDIV factor term_tail                                          *
+ *   04. xor_expr                                                         *
+ *     - and_expr xor_expr_tail                                           *
+ *   05. xor_expr_tail                                                    *
+ *     - BIT_XOR and_expr xor_expr_tail                                   *
  *     - NiL                                                              *
- *   - factor                                                             *
+ *   06. and_expr                                                         *
+ *     - addsub_expr and_expr_tail                                        *
+ *   07. and_expr_tail                                                    *
+ *     - BIT_AND addsub_expr add_expr_tail                                *
+ *     - NiL                                                              *
+ *   08. addsub_expr                                                      *
+ *     - muldiv_expr addsub_expr_tail                                     *
+ *   09. addsub_expr_tail                                                 *
+ *     - ADDSUB muldiv_expr addsub_expr_tail                              *
+ *     - NiL                                                              *
+ *   10. muldiv_expr                                                      *
+ *     - unary_expr muldiv_expr_tail                                      *
+ *   11. muldiv_expr_tail                                                 *
+ *     - MULDIV unary_expr muldiv_expr_tail                               *
+ *     - NiL                                                              *
+ *   12. unary_expr                                                       *
+ *     - ADDSUB unary_expr                                                *
+ *     - factor                                                           *
+ *   13. factor                                                           *
  *     - INT                                                              *
- *     - ADDSUB INT                                                       *
- *     - ADDSUB ID                                                        *
- *     - ADDSUB LPAREN expr RPAREN                                        *
  *     - ID                                                               *
- *     - ID ASSIGN expr                                                   *
- *     - LPAREN expr RPAREN                                               *
+ *     - INCDEC ID                                                        *
+ *     - LPAREN assign_expr RPAREN                                        *
  **************************************************************************/
 
 /**
@@ -66,7 +85,7 @@ int getval(char* str) {
 
     // put the boundary check after the iteration is fine :)
     if (sbcount >= TBLSIZE)
-        error(RUNOUT);
+        error(RUNOUT, "");
     
     strcpy(table[sbcount].name, str);
     table[sbcount].val = 0;
@@ -85,7 +104,7 @@ int setval(char* str, int val) {
     }
 
     if (sbcount >= TBLSIZE)
-        error(RUNOUT);
+        error(RUNOUT, "");
     
     strcpy(table[sbcount].name, str);
     table[sbcount].val = val;
@@ -125,6 +144,11 @@ BTNode* factor(void) {
         // INT
         retp = makeNode(INT, getLexeme());
         advance();
+        // before ruturn, we need to check if the preceeding token is ID
+        if (match(ID)) {
+            error(SYNTAXERR, "Variable cannot start with digit");
+            exit(0);
+        }
     } else if (match(ID)) {
         left = makeNode(ID, getLexeme());
         advance();
@@ -160,10 +184,10 @@ BTNode* factor(void) {
                 advance();
             else
                 // souldpanic!()
-                error(MISPAREN);
+                error(MISPAREN, "");
         } else {
             // unary operator with no expression on the right
-            error(NOTNUMID);
+            error(NOTNUMID, "");
         }
     } else if (match(LPAREN)) {
         // consume '('
@@ -175,10 +199,10 @@ BTNode* factor(void) {
             advance();
         else
             // souldpanic!()
-            error(MISPAREN);
+            error(MISPAREN, "");
     } else {
         // factor must be the above case
-        error(NOTNUMID);
+        error(NOTNUMID, "");
     }
     return retp;
 }
@@ -245,38 +269,38 @@ void statement(void) {
             printf(">> ");
             advance();
         } else {
-            error(SYNTAXERR);
+            error(SYNTAXERR, "");
         }
     }
 }
 
-void err(ErrorType errorNum) {
+void err(ErrorType errorNum, char* detail) {
     if (PRINTERR) {
         fprintf(stderr, "error: ");
         switch (errorNum) {
             case MISPAREN:
-                fprintf(stderr, "mismatched parenthesis\n");
+                fprintf(stderr, "mismatched parenthesis. %s\n", detail);
                 break;
             case NOTNUMID:
-                fprintf(stderr, "number or identifier expected\n");
+                fprintf(stderr, "number or identifier expected. %s\n", detail);
                 break;
             case NOTFOUND:
-                fprintf(stderr, "variable not defined\n");
+                fprintf(stderr, "variable not defined. %s\n", detail);
                 break;
             case RUNOUT:
-                fprintf(stderr, "out of memory\n");
+                fprintf(stderr, "out of memory. %s\n", detail);
                 break;
             case NOTLVAL:
-                fprintf(stderr, "lvalue required as an operand\n");
+                fprintf(stderr, "lvalue required as an operand. %s\n", detail);
                 break;
             case DIVZERO:
-                fprintf(stderr, "divide by constant zero\n");
+                fprintf(stderr, "divide by constant zero. %s\n", detail);
                 break;
             case SYNTAXERR:
-                fprintf(stderr, "syntax error\n");
+                fprintf(stderr, "syntax error. %s\n", detail);
                 break;
             default:
-                fprintf(stderr, "undefined error\n");
+                fprintf(stderr, "undefined error. %s\n", detail);
                 break;
         }
     }
