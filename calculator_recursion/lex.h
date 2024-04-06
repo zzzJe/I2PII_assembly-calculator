@@ -8,16 +8,21 @@
  * @enum
  */
 typedef enum token_set_t {
-    UNKNOWN,
-    END,     // \n
-    ENDFILE, // EOF
-    INT,     // integer
-    ID,      // variable system
-    ADDSUB,  // + - (binary | unary)
-    MULDIV,  // * /
-    ASSIGN,  // = += -= *= /= %= |= &= ^=
-    LPAREN,  // (
-    RPAREN   // )
+    UNKNOWN,       // ヾ(•ω•`)o
+    END,           // \n
+    ENDFILE,       // EOF
+    ASSIGN,        // =
+    ADDSUB_ASSIGN, // += -=
+    BIT_OR,        // |
+    BIT_XOR,       // ^
+    BIT_AND,       // &
+    ADDSUB,        // + - (binary | unary)
+    MULDIV,        // * /
+    INCDEC,        // ++ --
+    INT,           // integer
+    ID,            // variable system
+    LPAREN,        // (
+    RPAREN         // )
 } TokenSet;
 
 /**
