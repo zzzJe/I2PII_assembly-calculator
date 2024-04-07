@@ -130,6 +130,93 @@ void freeTree(BTNode* root) {
     }
 }
 
+void statement(void) {
+    // 00. statement
+    //   - ENDFILE
+    //   - END
+    //   - assign_expr END
+    BTNode* retp = NULL;
+
+    if (match(ENDFILE)) {
+        exit(0);
+    } else if (match(END)) {
+        printf(">> ");
+        advance();
+    } else {
+        retp = assign_expr();
+        if (match(END)) {
+            printf("%d\n", evaluateTree(retp));
+            printf("Prefix traversal: ");
+            printPrefix(retp);
+            printf("\n");
+            freeTree(retp);
+            printf(">> ");
+            advance();
+        } else {
+            error(SYNTAXERR, "Unexpected token after complete expression");
+        }
+    }
+}
+
+BTNode* assign_expr(void) {
+    // 01. assign_expr
+    //   - ID ASSIGN assign_expr
+    //   - ID ADDSUB_ASSIGN assign_expr
+    //   - or_expr
+
+    // 1. use `or_expr` stored in `left` first
+    // 2. check the following token
+    //    if is ADDSUB_ASSIGN / ASSIGN:
+    //      if `left` is `ID`:
+    //        go ahead
+    //      else:
+    //        error!()
+    //    else:
+    //      directly return `left`
+    BTNode* retp = NULL;
+    BTNode* left = NULL;
+
+    left = or_expr();
+    if (match(ASSIGN) || match(ADDSUB_ASSIGN)) {
+        if (left->data != ID)
+            error(SYNTAXERR, "Assign must be on the lvalue");
+        // now left is an identifier
+        if (match(ASSIGN)) {
+            retp = makeNode(ASSIGN, "=");
+            advance();
+            retp->left = left;
+            retp->right = assign_expr();
+        } else {
+            retp = makeNode(ASSIGN, "=");
+            retp->left = left;
+            retp->right = makeNode(ADDSUB, (char*){ getLexeme()[0], '\0' });
+            advance();
+            // WARNING
+            //   here I use the same node for the simplicity
+            //   but it may cause some serious issue
+            retp->right->left = left;
+            retp->right->right = assign_expr();
+        }
+    } else
+        // the END right after `assign_expr()` is checked in `statement()`
+        retp = left;
+    
+    return retp;
+}
+
+BTNode* or_expr(void) {}
+BTNode* or_expr_tail(BTNode* left) {}
+BTNode* xor_expr(void) {}
+BTNode* xor_expr_tail(BTNode* left) {}
+BTNode* and_expr(void) {}
+BTNode* and_expr_tail(BTNode* left) {}
+BTNode* addsub_expr(void) {}
+BTNode* addsub_expr_tail(BTNode* left) {}
+BTNode* muldiv_expr(void) {}
+BTNode* muldiv_expr_tail(BTNode* left) {}
+BTNode* unary_expr(void) {}
+BTNode* factor(void) {}
+
 // factor := INT |
 //           ADDSUB INT |
 //           ADDSUB ID  | 
