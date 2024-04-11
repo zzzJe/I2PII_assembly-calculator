@@ -17,6 +17,9 @@ static int isvariablebody(char c) {
 }
 
 TokenSet getToken(void) {
+    // TODO:
+    // variable cannot start with digit error should be handled seperately here
+    
     int i = 0;
     char c = '\0';
 
@@ -49,7 +52,11 @@ TokenSet getToken(void) {
         // check if is single `+` `-` or not
         // first take out the following char from stream
         char preceeding = fgetc(stdin);
-        if ((preceeding == '+' || preceeding == '-') && preceeding == c) {
+        // here c may be  `+` or `-`
+        // check `preceeding == c` means `++` `--`
+        // check `preceeding == =` means `+=` `-=`
+        // that's all the possible extension
+        if (preceeding == c) {
             // INCDEC
             lexeme[1] = preceeding;
             lexeme[2] = '\0';
