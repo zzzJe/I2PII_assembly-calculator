@@ -98,13 +98,6 @@ extern BTNode* makeNode(TokenSet tok, const char* lexe);
  */
 extern void freeTree(BTNode *root);
 
-extern BTNode* factor(void);
-extern BTNode* term(void);
-extern BTNode* term_tail(BTNode *left);
-extern BTNode* expr(void);
-extern BTNode* expr_tail(BTNode *left);
-extern void statement(void);
-
 extern void statement(void);
 extern BTNode* assign_expr(void);
 extern BTNode* or_expr(void);

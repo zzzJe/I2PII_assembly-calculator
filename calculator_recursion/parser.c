@@ -104,7 +104,7 @@ int setval(char* str, int val) {
     }
 
     if (sbcount >= TBLSIZE)
-        error(RUNOUT, "");
+        error(RUNOUT, "Try to allocate memory on full-capacity stack");
     
     strcpy(table[sbcount].name, str);
     table[sbcount].val = val;
@@ -145,7 +145,7 @@ void statement(void) {
     } else {
         retp = assign_expr();
         if (match(END)) {
-            printf("%d\n", evaluateTree(retp));
+            // printf("%d\n", evaluateTree(retp));
             printf("Prefix traversal: ");
             printPrefix(retp);
             printf("\n");
@@ -163,6 +163,25 @@ BTNode* assign_expr(void) {
     //   - ID ASSIGN assign_expr
     //   - ID ADDSUB_ASSIGN assign_expr
     //   - or_expr
+
+    // 1.
+    //   [or_expr]
+    // 2.
+    //    [=]
+    //    / \
+    // [id] [assign_expr]
+    // 3. (this will incur double free)
+    //    [=]
+    //    / \
+    // [id] [+-]
+    //    \_/  \
+    //         [assign_expr]
+    // 3.
+    //    [=]
+    //    / \
+    // [id] [+-]
+    //      /  \
+    //   [id]  [assign_expr]
 
     // 1. use `or_expr` stored in `left` first
     // 2. check the following token
@@ -187,14 +206,21 @@ BTNode* assign_expr(void) {
             retp->left = left;
             retp->right = assign_expr();
         } else {
+            // here directly translate
+            // :   [+=]
+            // :   /  \
+            // : [x]  [3]
+            // to
+            // :   [=]
+            // :   / \
+            // : [x] [+]
+            // :     / \
+            // :   [x] [3]
             retp = makeNode(ASSIGN, "=");
             retp->left = left;
-            retp->right = makeNode(ADDSUB, (char*){ getLexeme()[0], '\0' });
+            retp->right = makeNode(ADDSUB, (char[2]){ getLexeme()[0], '\0' });
             advance();
-            // WARNING
-            //   here I use the same node for the simplicity
-            //   but it may cause some serious issue
-            retp->right->left = left;
+            retp->right->left = makeNode(ID, left->lexeme);
             retp->right->right = assign_expr();
         }
     } else
@@ -204,161 +230,261 @@ BTNode* assign_expr(void) {
     return retp;
 }
 
-BTNode* or_expr(void) {}
-BTNode* or_expr_tail(BTNode* left) {}
-BTNode* xor_expr(void) {}
-BTNode* xor_expr_tail(BTNode* left) {}
-BTNode* and_expr(void) {}
-BTNode* and_expr_tail(BTNode* left) {}
-BTNode* addsub_expr(void) {}
-BTNode* addsub_expr_tail(BTNode* left) {}
-BTNode* muldiv_expr(void) {}
-BTNode* muldiv_expr_tail(BTNode* left) {}
-BTNode* unary_expr(void) {}
-BTNode* factor(void) {}
+BTNode* or_expr(void) {
+    // 02. or_expr
+    //   - xor_expr or_expr_tail
 
-// factor := INT |
-//           ADDSUB INT |
-//           ADDSUB ID  | 
-//           ADDSUB LPAREN expr RPAREN
-//           ID | 
-//           ID ASSIGN expr |
-//           LPAREN expr RPAREN |
+    // 1.
+    //   [xor_expr]
+    // 2.
+    //          [|]
+    //          / \
+    // [xor_expr] [xor_expr]
+    // 3.
+    //            [|] ...
+    //            / \
+    //          [|] [xor_expr]
+    //          / \
+    // [xor_expr] [xor_expr]
+    BTNode* node = xor_expr();
+    return or_expr_tail(node);
+}
+
+BTNode* or_expr_tail(BTNode* left) {
+    // 03. or_expr_tail
+    //  - BIT_OR xor_expr or_expr_tail
+    //  - NiL
+    if (match(BIT_OR)) {
+        //      [|]
+        BTNode* node = makeNode(BIT_OR, getLexeme());
+        advance();
+        //      [|]
+        //      /
+        // [node]
+        node->left = left;
+        // this is invalid, if use this grammar, then evaluation would be right2left
+        // 
+        //      [|] <- last evaluated
+        //      / \
+        // [node] [|]
+        //        / \
+        //   [node] [...]
+        // 
+        // ```c
+        // node->right = or_expr();
+        // return node;
+        // ```
+
+        //        [|]
+        //        / \
+        //      [|] <- first evaluated
+        //      / \
+        // [node] [xor_expr()]
+        node->right = xor_expr();
+        return or_expr_tail(node);
+    } else {
+        return left;
+    }
+}
+
+BTNode* xor_expr(void) {
+    // 04. xor_expr
+    //   - and_expr xor_expr_tail
+    BTNode* node = and_expr();
+    return xor_expr_tail(node);
+}
+
+BTNode* xor_expr_tail(BTNode* left) {
+    // 05. xor_expr_tail
+    //   - BIT_XOR and_expr xor_expr_tail
+    //   - NiL
+    if (match(BIT_XOR)) {
+        BTNode* node = makeNode(BIT_XOR, getLexeme());
+        advance();
+        node->left = left;
+        node->right = and_expr();
+        return xor_expr_tail(node);
+    } else {
+        return left;
+    }
+}
+
+BTNode* and_expr(void) {
+    // 06. and_expr
+    //   - addsub_expr and_expr_tail
+    BTNode* node = addsub_expr();
+    return and_expr_tail(node);
+}
+
+BTNode* and_expr_tail(BTNode* left) {
+    // 07. and_expr_tail
+    //   - BIT_AND addsub_expr add_expr_tail
+    //   - NiL
+    if (match(BIT_AND)) {
+        BTNode* node = makeNode(BIT_AND, getLexeme());
+        advance();
+        node->left = left;
+        node->right = addsub_expr();
+        return and_expr_tail(node);
+    } else {
+        return left;
+    }
+}
+
+BTNode* addsub_expr(void) {
+    // 08. addsub_expr
+    //   - muldiv_expr addsub_expr_tail
+    BTNode* node = muldiv_expr();
+    return addsub_expr_tail(node);
+}
+
+BTNode* addsub_expr_tail(BTNode* left) {
+    // 09. addsub_expr_tail
+    //   - ADDSUB muldiv_expr addsub_expr_tail
+    //   - NiL
+    if (match(ADDSUB)) {
+        BTNode* node = makeNode(ADDSUB, getLexeme());
+        advance();
+        node->left = left;
+        node->right = muldiv_expr();
+        return addsub_expr_tail(node);
+    } else {
+        return left;
+    }
+}
+
+BTNode* muldiv_expr(void) {
+    // 10. muldiv_expr
+    //   - unary_expr muldiv_expr_tail
+    BTNode* node = unary_expr();
+    return muldiv_expr_tail(node);
+}
+
+BTNode* muldiv_expr_tail(BTNode* left) {
+    // 11. muldiv_expr_tail
+    //   - MULDIV unary_expr muldiv_expr_tail
+    //   - NiL
+    if (match(MULDIV)) {
+        BTNode* node = makeNode(MULDIV, getLexeme());
+        advance();
+        node->left = left;
+        node->right = unary_expr();
+        return muldiv_expr_tail(node);
+    } else {
+        return left;
+    }
+}
+
+BTNode* unary_expr(void) {
+    // 12. unary_expr
+    //   - ADDSUB unary_expr
+    //   - factor
+    
+    // directly construct `0 ADDSUB unary_expr()`
+    // for optimization, if `+ - - + + -` should be optimized into `-`, `- -` should be nothing
+    // SHOULD THIS BE IN `optimize(BTNode*)` ?
+    // there are 2 possible solution
+    // 1. use a loop to keep track of consecutive `ADDSUB` tokens
+    //   - use a variable `is_unary_negative := 0`
+    //     ┌───────┬───┐
+    //     │ a ^ * │ a'│
+    //     ├───────┼───┤
+    //     │ 0 ^ 0 │ 0 │
+    //     │ 1 ^ 0 │ 1 │
+    //     │ 0 ^ 1 │ 1 │
+    //     │ 1 ^ 1 │ 0 │
+    //     └───────┴───┘
+    //   - while match(ADDSUB):
+    //       is_unary_negative ^= getLexeme()[0] == '-'
+    //       advance()
+    // 2. use recursion // too complicated
+    //    - if getLexeme()[0] == '+':
+    //        return unary_expr()
+    //      else:
+    //        next_unary := unary_expr()
+    //        if next_unary is ADDSUB and '-': // but here need to check if it is unary or binary operation
+    //          retp := next_unary
+    //          free(next_unary->left)
+    //          free(next_unary)
+    //          return retp
+    //        else:
+    //          make `0 - {next_unary}` grammar
+
+    // IF `optimize()` IS FINISHED, THEN USE THE FOLLOWING MAY BE MORE APPROPRIATE
+    // if (match(ADDSUB)) {
+    //     BTNode* root = makeNode(ADDSUB, (char[2]){ getLexeme()[0], '\0' });
+    //     advance();
+    //     root->left = makeNode(INT, "0");
+    //     root->right = unary_expr();
+    //     return root;
+    // } else {
+    //     return factor();
+    // }
+
+    int is_unary_negation = 0;
+    for (; match(ADDSUB); advance())
+        is_unary_negation ^= getLexeme()[0] == '-';
+    
+    // here match(ADDSUB) is false
+    BTNode* node = factor();
+    if (is_unary_negation) {
+        BTNode* root = makeNode(ADDSUB, "-");
+        root->left = makeNode(INT, "0");
+        root->right = node;
+        return root;
+    } else
+        return node;
+}
+
 BTNode* factor(void) {
-    BTNode* retp = NULL, *left = NULL;
+    // 13. factor
+    //   - INT
+    //   - ID
+    //   - INCDEC ID
+    //   - LPAREN assign_expr RPAREN
+    BTNode* retp = NULL;
 
     if (match(INT)) {
-        // INT
         retp = makeNode(INT, getLexeme());
         advance();
-        // before ruturn, we need to check if the preceeding token is ID
-        if (match(ID)) {
-            error(SYNTAXERR, "Variable cannot start with digit");
-            exit(0);
-        }
+        // TODO:
+        // variable name start with number should be in the tokenizer part
+        // b/c we cannot assert that `ID` after `INT` is seperated by space or not
+        // and that is two kind of error, but both are error
+        // for examine-oriented project, it is best not to handle it with extra time
+        // but for best practice, `variable cannot start with digit` error should be
+        // handled seperately in `lex.c`
     } else if (match(ID)) {
-        left = makeNode(ID, getLexeme());
+        retp = makeNode(ID, getLexeme());
         advance();
-        if (!match(ASSIGN)) {
-            // ID
-            retp = left;
-        } else {
-            // ID ASSIGN expr
-            retp = makeNode(ASSIGN, getLexeme());
-            advance();
-            retp->left = left;
-            retp->right = expr();
-        }
-    } else if (match(ADDSUB)) {
-        retp = makeNode(ADDSUB, getLexeme());
-        retp->left = makeNode(INT, "0");
-        advance();
-        if (match(INT)) {
-            // ADDSUB INT
-            retp->right = makeNode(INT, getLexeme());
-            advance();
-        } else if (match(ID)) {
-            // ADDSUB ID
-            retp->right = makeNode(ID, getLexeme());
-            advance();
-        } else if (match(LPAREN)) {
-            // consume '('
-            advance();
-            // ADDSUB LPAREN expr RPAREN
-            retp->right = expr();
-            if (match(RPAREN))
-                // consume ')'
-                advance();
-            else
-                // souldpanic!()
-                error(MISPAREN, "");
-        } else {
-            // unary operator with no expression on the right
-            error(NOTNUMID, "");
-        }
     } else if (match(LPAREN)) {
-        // consume '('
         advance();
-        // LPAREN expr RPAREN
-        retp = expr();
+        retp = assign_expr();
         if (match(RPAREN))
-            // consume ')'
             advance();
         else
-            // souldpanic!()
             error(MISPAREN, "");
+    } else if (match(INCDEC)) {
+        char addsub_operation = getLexeme()[0];
+        advance();
+        // consider case `++(x)`
+        BTNode* next = factor();
+        if (next->data == ID) {
+            retp = makeNode(ASSIGN, "=");
+            retp->left = next;
+            retp->right = makeNode(ADDSUB, (char[2]){ addsub_operation, '\0' });
+            retp->right->left = makeNode(ID, next->lexeme);
+            retp->right->right = makeNode(INT, "1");
+        } else {
+            error(SYNTAXERR, addsub_operation == '+'
+                ? "Cannot apply increment operator on non-identifier"
+                : "Cannot apply decrement operator on non-identifier"
+            );
+        }
     } else {
-        // factor must be the above case
         error(NOTNUMID, "");
     }
     return retp;
-}
-
-// term := factor term_tail
-BTNode* term(void) {
-    BTNode* node = factor();
-    return term_tail(node);
-}
-
-// term_tail := MULDIV factor term_tail | NiL
-BTNode* term_tail(BTNode* left) {
-    BTNode* node = NULL;
-
-    if (match(MULDIV)) {
-        node = makeNode(MULDIV, getLexeme());
-        advance();
-        node->left = left;
-        node->right = factor();
-        return term_tail(node);
-    } else {
-        return left;
-    }
-}
-
-// expr := term expr_tail
-BTNode* expr(void) {
-    BTNode* node = term();
-    return expr_tail(node);
-}
-
-// expr_tail := ADDSUB term expr_tail | NiL
-BTNode* expr_tail(BTNode* left) {
-    BTNode* node = NULL;
-
-    if (match(ADDSUB)) {
-        node = makeNode(ADDSUB, getLexeme());
-        advance();
-        node->left = left;
-        node->right = term();
-        return expr_tail(node);
-    } else {
-        return left;
-    }
-}
-
-// statement := ENDFILE | END | expr END
-void statement(void) {
-    BTNode* retp = NULL;
-
-    if (match(ENDFILE)) {
-        exit(0);
-    } else if (match(END)) {
-        printf(">> ");
-        advance();
-    } else {
-        retp = expr();
-        if (match(END)) {
-            printf("%d\n", evaluateTree(retp));
-            printf("Prefix traversal: ");
-            printPrefix(retp);
-            printf("\n");
-            freeTree(retp);
-            printf(">> ");
-            advance();
-        } else {
-            error(SYNTAXERR, "");
-        }
-    }
 }
 
 void err(ErrorType errorNum, char* detail) {
