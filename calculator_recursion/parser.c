@@ -75,6 +75,37 @@ void initTable(void) {
     sbcount = 3;
 }
 
+/**
+ * Determine whether variable is registered 
+ * 
+ * @param name The name of the variable
+ * @return boolean
+ */
+static int variable_in_table(char* name) {
+    for (int i = 0; i < sbcount; i++)
+        if (strcmp(name, table[i].name) == 0)
+            return 1;
+    return 0;
+}
+
+/**
+ * Register variable in the table, if variable exists, then do nothing
+ * 
+ * @param name The name of the variable
+ */
+static void register_in_table(char* name) {
+    for (int i = 0; i < sbcount; i++)
+        if (strcmp(name, table[i].name) == 0)
+            return;
+    
+    if (sbcount >= TBLSIZE)
+        error(RUNOUT, "Try to allocate memory on full-capacity stack");
+    
+    strcpy(table[sbcount].name, name);
+    table[sbcount].val = 0;
+    sbcount++;
+}
+
 int getval(char* str) {
     int i = 0;
 
@@ -82,15 +113,8 @@ int getval(char* str) {
     for (i = 0; i < sbcount; i++)
         if (strcmp(str, table[i].name) == 0)
             return table[i].val;
-
-    // put the boundary check after the iteration is fine :)
-    if (sbcount >= TBLSIZE)
-        error(RUNOUT, "");
     
-    strcpy(table[sbcount].name, str);
-    table[sbcount].val = 0;
-    sbcount++;
-    return 0;
+    error(NOTFOUND, "Occurs in the evaluatation");
 }
 
 int setval(char* str, int val) {
@@ -130,28 +154,76 @@ void freeTree(BTNode* root) {
     }
 }
 
+static int is_ast_has_illegal_unregistered_variable(BTNode* root) {
+    if (!root)
+        return 0;
+    if (root->data == INT)
+        return 0;
+    if (root->data == ID)
+        return !variable_in_table(root->lexeme);
+    if (root->data == ASSIGN) {
+        // lookup root->right first
+        if (is_ast_has_illegal_unregistered_variable(root->right))
+            return 1;
+        // register root->left then
+        register_in_table(root->left->lexeme);
+        return 0;
+    } else {
+        // + - * / | ^ &
+        return is_ast_has_illegal_unregistered_variable(root->left)
+            || is_ast_has_illegal_unregistered_variable(root->right);
+    }
+}
+
 void statement(void) {
     // 00. statement
     //   - ENDFILE
     //   - END
     //   - assign_expr END
     BTNode* retp = NULL;
+    advance();
 
     if (match(ENDFILE)) {
         exit(0);
     } else if (match(END)) {
         printf(">> ");
-        advance();
     } else {
         retp = assign_expr();
         if (match(END)) {
-            // printf("%d\n", evaluateTree(retp));
+            // This part is for optimazation
+            // In exam, do not implement this part first, use evaluation time error instead
+            if (is_ast_has_illegal_unregistered_variable(retp))
+                error(NOTFOUND, "Occurs in parsing part");
+            printf("%d\n", evaluateTree(retp));
             printf("Prefix traversal: ");
             printPrefix(retp);
             printf("\n");
             freeTree(retp);
             printf(">> ");
-            advance();
+        } else if (match(UNKNOWN)) {
+            // 2024/04/13 stupid TA problem fixed
+            // 
+            // mechanism:
+            // `statement()` will not call `advance()` at the very begining
+            // `statement()` rely heavily on `getToken()`'s calling `advance()`
+            // to handle initial state, but here comes the problem, `TokenSet::UNKNOWN`
+            // is not unique to the initial state, when it encounter unknown
+            // token in stdin steam, it will become `TokenSet::UNKNOWN`
+            // from the design of `getToken()` by TA we can infer that the nil check
+            // is ONLY FOR INITIAL STATE while it is totally wrong
+            // 
+            // when we encounter undefined token and want to check if current
+            // token is `TokenSet::UNKNOWN`, we will call `match()` to
+            // check the fact, but `match()` do some UNEXPECTED SIDE EFFECT
+            // it wash the UNKNOWN state once, and return the judgement,
+            // which makes the overall program behavier hard to predict
+            // 
+            // solution:
+            // 0. REMOVE UNNECESSARY SIDE EFFECT... TA...
+            // 1. put the `advance()` in the beginning of `statement()`
+            // 2. remove `advance()` in the bottom of `statement()`
+            // 3. remove unnecessary init check by `getToken()`
+            error(SYNTAXERR, "Undefined token occurs");
         } else {
             error(SYNTAXERR, "Unexpected token after complete expression");
         }
@@ -198,7 +270,7 @@ BTNode* assign_expr(void) {
     left = or_expr();
     if (match(ASSIGN) || match(ADDSUB_ASSIGN)) {
         if (left->data != ID)
-            error(SYNTAXERR, "Assign must be on the lvalue");
+            error(NOTLVAL, "Assign must be on the lvalue");
         // now left is an identifier
         if (match(ASSIGN)) {
             retp = makeNode(ASSIGN, "=");

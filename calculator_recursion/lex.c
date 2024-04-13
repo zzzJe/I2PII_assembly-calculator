@@ -123,6 +123,7 @@ TokenSet getToken(void) {
     } else if (c == EOF) {
         return ENDFILE;
     } else {
+        // fprintf(stderr, "tokenization error: undefined token occurs\n");
         return UNKNOWN;
     }
 }
@@ -132,8 +133,6 @@ void advance(void) {
 }
 
 int match(TokenSet token) {
-    if (curToken == UNKNOWN)
-        advance();
     return token == curToken;
 }
 
