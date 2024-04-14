@@ -136,11 +136,20 @@ int setval(char* str, int val) {
     return val;
 }
 
+int get_addr(char* str) {
+    for (int i = 0; i < sbcount; i++)
+        if (strcmp(str, table[i].name) == 0)
+            return i * 4;
+    
+    error(NOTFOUND, "Occurs in the `get_addr` evaluatation");
+}
+
 BTNode* makeNode(TokenSet tok, const char* lexe) {
     BTNode* node = (BTNode*)malloc(sizeof(BTNode));
     strcpy(node->lexeme, lexe);
     node->data = tok;
     node->val = 0;
+    node->reg = NO_REG_LABEL;
     node->left = NULL;
     node->right = NULL;
     return node;
@@ -184,9 +193,14 @@ void statement(void) {
     advance();
 
     if (match(ENDFILE)) {
+        printf("MOV r0 [0]\n");
+        printf("MOV r1 [4]\n");
+        printf("MOV r2 [8]\n");
+        printf("EXIT 0\n");
         exit(0);
     } else if (match(END)) {
-        printf(">> ");
+        if (PRINTERR)
+            printf(">> ");
     } else {
         retp = assign_expr();
         if (match(END)) {
@@ -194,12 +208,11 @@ void statement(void) {
             // In exam, do not implement this part first, use evaluation time error instead
             if (is_ast_has_illegal_unregistered_variable(retp))
                 error(NOTFOUND, "Occurs in parsing part");
-            printf("%d\n", evaluateTree(retp));
-            printf("Prefix traversal: ");
-            printPrefix(retp);
-            printf("\n");
+            evaluateTree(retp);
+            generate_assembly(retp);
             freeTree(retp);
-            printf(">> ");
+            if (PRINTERR)
+                printf(">> ");
         } else if (match(UNKNOWN)) {
             // 2024/04/13 stupid TA problem fixed
             // 

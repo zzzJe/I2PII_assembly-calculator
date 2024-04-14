@@ -3,6 +3,7 @@
 
 #include "lex.h"
 #define TBLSIZE 64
+#define NO_REG_LABEL -1
 
 /**
  * Set PRINTERR to 1 to print error message while calling error()
@@ -14,10 +15,12 @@
  * Macro to print error message and exit the program
  * This will also print where you called it in your program
  */
-#define error(errorNum, detail) { \
-    if (PRINTERR) \
-        fprintf(stderr, "error() called at %s:%d\n", __FILE__, __LINE__); \
-    err(errorNum, detail); \
+#define error(errorNum, detail) {\
+    fprintf(stdout, "EXIT 1\n");\
+    if (PRINTERR) {\
+        fprintf(stderr, "error() called at %s:%d\n", __FILE__, __LINE__);\
+        err(errorNum, detail);\
+    }\
 }
 
 /**
@@ -51,6 +54,7 @@ typedef struct {
 typedef struct _Node {
     TokenSet data;
     int val;
+    int reg;
     char lexeme[MAXLEN];
     struct _Node *left; 
     struct _Node *right;
@@ -68,7 +72,7 @@ extern void initTable(void);
 
 /**
  * Get the value of variable stored in table
- * If no exists then create a new var and return 0
+ * If no exists then panic
  * @param str varuable name
  * @returns value of variable
  * @warning Will blame if exceed table capacity
@@ -84,6 +88,14 @@ extern int getval(char* str);
  * @warning Will blame if exceed table capacity
  */
 extern int setval(char* str, int val);
+
+/**
+ * Get the addr in table
+ * If no exists then panic
+ * @param str 
+ * @returns address of variable 
+ */
+extern int get_addr(char* str);
 
 /**
  * Make a new node according to token type and lexeme
