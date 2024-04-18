@@ -2,11 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "codeGen.h"
-#define MIN(a, b) (a < b ? a : b)
-#define MAX(a, b) (a > b ? a : b)
-#define IS_LEAF(n) (n && !n->left && !n->right)
 
 static int reg_label = 0;
+static int mem_label = 63;
 
 /**
  * Write a register registration on stdin and return the allocated rege label
@@ -47,7 +45,7 @@ static void asm_ralloc(BTNode* node) {
         fprintf(stdout, "MOV r%d [%d]\n", reg_label, get_addr(node->lexeme));
         break;
     case INT:
-        fprintf(stdout, "MOV r%d %d\n", reg_label, atoi(node->lexeme));
+        fprintf(stdout, "MOV r%d %s\n", reg_label, node->lexeme);
         break;
     default:
         return;
@@ -56,68 +54,98 @@ static void asm_ralloc(BTNode* node) {
 }
 
 static void asm_assign(BTNode* assign_root) {
-    if (assign_root->right->reg == NO_REG_LABEL)
-        asm_generate(assign_root->right);
+    asm_generate(assign_root->right);
     fprintf(stdout, "MOV [%d] r%d\n", get_addr(assign_root->left->lexeme), assign_root->right->reg);
     assign_root->reg = assign_root->right->reg;
 }
 
+static int max(int a, int b) {
+    return a > b ? a : b;
+}
+
+static int get_depth(BTNode* root) {
+    return root
+        ? 1 + max(get_depth(root->left), get_depth(root->right))
+        : 0;
+}
+
+#define MIN(a, b) (a < b ? a : b)
+#define MAX(a, b) (a > b ? a : b)
 static void asm_arithmetic(BTNode* arith_root) {
-    // do tree first
-    if (arith_root->left->reg == NO_REG_LABEL && !IS_LEAF(arith_root->left))
+    int release_register = reg_label == 7;
+    if (release_register) {
+        fprintf(stdout, "MOV [%d] r6\n", mem_label * 4);
+        reg_label--;
+        mem_label--;
+    }
+
+    if (get_depth(arith_root->left) >= get_depth(arith_root->right)) {
         asm_generate(arith_root->left);
-    if (arith_root->right->reg == NO_REG_LABEL && !IS_LEAF(arith_root->right))
         asm_generate(arith_root->right);
-    // then do single node
-    if (arith_root->left->reg == NO_REG_LABEL)
+    } else {
+        asm_generate(arith_root->right);
         asm_generate(arith_root->left);
-    if (arith_root->right->reg == NO_REG_LABEL)
-        asm_generate(arith_root->right);
+    }
 
     int small_reg = MIN(arith_root->left->reg, arith_root->right->reg);
     int large_reg = MAX(arith_root->left->reg, arith_root->right->reg);
 
+    int former_reg = release_register ? large_reg : small_reg;
+    int latter_reg = release_register ? small_reg : large_reg;
+
     switch (arith_root->lexeme[0]) {
     case '+':
-        fprintf(stdout, "ADD r%d r%d\n", small_reg, large_reg);
+        fprintf(stdout, "ADD r%d r%d\n", former_reg, latter_reg);
         break;
     case '-':
         fprintf(stdout, "SUB r%d r%d\n", arith_root->left->reg, arith_root->right->reg);
-        if (arith_root->left->reg == large_reg)
-            fprintf(stdout, "MOV r%d r%d\n", small_reg, large_reg);
+        if (arith_root->left->reg == latter_reg)
+            fprintf(stdout, "MOV r%d r%d\n", former_reg, latter_reg);
         break;
     case '*':
-        fprintf(stdout, "MUL r%d r%d\n", small_reg, large_reg);
+        fprintf(stdout, "MUL r%d r%d\n", former_reg, latter_reg);
         break;
     case '/':
         fprintf(stdout, "DIV r%d r%d\n", arith_root->left->reg, arith_root->right->reg);
-        if (arith_root->left->reg == large_reg)
-            fprintf(stdout, "MOV r%d r%d\n", small_reg, large_reg);
+        if (arith_root->left->reg == latter_reg)
+            fprintf(stdout, "MOV r%d r%d\n", former_reg, latter_reg);
         break;
     case '|':
-        fprintf(stdout, "OR r%d r%d\n", small_reg, large_reg);
+        fprintf(stdout, "OR r%d r%d\n", former_reg, latter_reg);
         break;
     case '^':
-        fprintf(stdout, "XOR r%d r%d\n", small_reg, large_reg);
+        fprintf(stdout, "XOR r%d r%d\n", former_reg, latter_reg);
         break;
     case '&':
-        fprintf(stdout, "AND r%d r%d\n", small_reg, large_reg);
+        fprintf(stdout, "AND r%d r%d\n", former_reg, latter_reg);
         break;
     }
 
-    arith_root->reg = small_reg;
-    reg_label--;
+    arith_root->reg = former_reg;
+
+    if (release_register)
+        fprintf(stdout, "MOV r6 [%d]\n", ++mem_label * 4);
+    else
+        reg_label--;
 }
+#undef MIN
+#undef MAX
 
 static void asm_generate(BTNode* root) {
     if (!root)
         return;
-    if (root->data == ID || root->data == INT)
+    switch (root->data) {
+    case ID:
+    case INT:
         asm_ralloc(root);
-    else if (root->data == ASSIGN)
+        break;
+    case ASSIGN:
         asm_assign(root);
-    else
+        break;
+    default:
         asm_arithmetic(root);
+        break;
+    }
 }
 
 void generate_assembly(BTNode* root) {
@@ -158,9 +186,13 @@ int evaluateTree(BTNode* root) {
                 } else if (strcmp(root->lexeme, "*") == 0) {
                     retval = lv * rv;
                 } else if (strcmp(root->lexeme, "/") == 0) {
-                    if (rv == 0)
+                    // here if right->data is not INT, then we should not panic!()
+                    // if we need exact value of the tree, we should garentee that this tree is pure-number tree
+                    if (rv == 0 && root->right->data == INT)
                         error(DIVZERO, "");
-                    retval = lv / rv;
+                    retval = rv == 0
+                        ? lv
+                        : lv / rv;
                 }
                 break;
             case BIT_AND:
