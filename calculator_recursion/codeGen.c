@@ -64,9 +64,11 @@ static int max(int a, int b) {
 }
 
 static int get_depth(BTNode* root) {
-    return root
-        ? 1 + max(get_depth(root->left), get_depth(root->right))
-        : 0;
+    return !root
+        ? 0
+        : root->data == ASSIGN
+        ? get_depth(root->right)
+        : 1 + max(get_depth(root->left), get_depth(root->right));
 }
 
 #define MIN(a, b) (a < b ? a : b)
