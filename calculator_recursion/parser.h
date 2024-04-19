@@ -9,7 +9,7 @@
  * Set PRINTERR to 1 to print error message while calling error()
  * @todo set PRINTERR to 0 before you submit your code
  */
-#define PRINTERR 1
+#define PRINTERR 0
 
 /**
  * Macro to print error message and exit the program
@@ -21,6 +21,7 @@
         fprintf(stderr, "error() called at %s:%d\n", __FILE__, __LINE__);\
         err(errorNum, detail);\
     }\
+    exit(0);\
 }
 
 /**

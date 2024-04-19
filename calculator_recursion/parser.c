@@ -184,6 +184,111 @@ static int is_ast_has_illegal_unregistered_variable(BTNode* root) {
     }
 }
 
+#define IS_LEAF(n) ((n) && !(n)->left && !(n)->right)
+#define IS_INT_0(n) ((n)->data == INT && evaluateTree(n) == 0)
+#define IS_INT_1(n) ((n)->data == INT && evaluateTree(n) == 1)
+#define IS_INT_n1(n) ((n)->data == INT && evaluateTree(n) == -1)
+/**
+ * Optimize unesessary nodes in a ast
+ * 
+ * @param root 
+ */
+static void optimize(BTNode** root) {
+    // if a node is `NULL` or is a leaf, then no need to optimize
+    if (!*root || IS_LEAF(*root))
+        return;
+    
+    // if the root has tree-shaped child, do it first
+    if (!IS_LEAF((*root)->left))
+        optimize(&(*root)->left);
+    if (!IS_LEAF((*root)->right))
+        optimize(&(*root)->right);
+    
+    // :   [+]
+    // :   / \
+    // : [0] [tree]
+    // to
+    // : [tree]
+    else if ((*root)->lexeme[0] == '+' && IS_INT_0((*root)->left)) {
+        BTNode* right_subtree = (*root)->right;
+        (*root)->right = NULL;
+        freeTree(*root);
+        *root = right_subtree;
+    }
+    // :      [+]
+    // :      / \
+    // : [tree] [0]
+    // to
+    // : [tree]
+    else if ((*root)->lexeme[0] == '+' && IS_INT_0((*root)->right)) {
+        BTNode* left_subtree = (*root)->left;
+        (*root)->left = NULL;
+        freeTree(*root);
+        *root = left_subtree;
+    }
+    // :      [-]
+    // :      / \
+    // : [tree] [0]
+    // to
+    // : [tree]
+    else if ((*root)->lexeme[0] == '-' && IS_INT_0((*root)->right)) {
+        BTNode* left_subtree = (*root)->left;
+        (*root)->left = NULL;
+        freeTree(*root);
+        *root = left_subtree;
+    }
+    // :   [*]      :      [*]
+    // :   / \      :      / \
+    // : [0] [tree] : [tree] [0]
+    // to
+    // : [0]
+    else if ((*root)->lexeme[0] == '*' && (IS_INT_0((*root)->left) || IS_INT_0((*root)->right))) {
+        BTNode* new_node = makeNode(INT, "0");
+        freeTree(*root);
+        *root = new_node;
+    }
+    // :   [*]
+    // :   / \
+    // : [1] [tree]
+    // to
+    // : [tree]
+    else if ((*root)->lexeme[0] == '*' && IS_INT_1((*root)->left)) {
+        BTNode* right_subtree = (*root)->right;
+        (*root)->right = NULL;
+        freeTree(*root);
+        *root = right_subtree;
+    }
+}
+#undef IS_LEAF
+#undef IS_INT_0
+#undef IS_INT_1
+#undef IS_INT_n1
+
+#define IS_LEAF(n) ((n) && !(n)->left && !(n)->right)
+static void optimize_constant(BTNode** root) {
+    if (!*root || IS_LEAF(*root))
+        return;
+
+    if (!IS_LEAF((*root)->left))
+        optimize_constant(&(*root)->left);
+    if (!IS_LEAF((*root)->right))
+        optimize_constant(&(*root)->right);
+    
+    // :      [operation]
+    // :          / \
+    // : [constant] [constant]
+    // to
+    // : [constant']
+    if ((*root)->left->data == INT && (*root)->right->data == INT) {
+        char buffer[MAXLEN];
+        sprintf(buffer, "%d", evaluateTree(*root));
+        BTNode* new_node = makeNode(INT, buffer);
+        freeTree(*root);
+        *root = new_node;   
+    }
+}
+#undef IS_LEAF
+
 void statement(void) {
     // 00. statement
     //   - ENDFILE
@@ -208,6 +313,7 @@ void statement(void) {
             // In exam, do not implement this part first, use evaluation time error instead
             if (is_ast_has_illegal_unregistered_variable(retp))
                 error(NOTFOUND, "Occurs in parsing part");
+            optimize_constant(&retp);
             evaluateTree(retp);
             generate_assembly(retp);
             freeTree(retp);
