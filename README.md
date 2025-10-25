@@ -12,3 +12,51 @@
 - simplification when encountering `ASSIGN` tree
   - for `++x / ++x`, it should be parsed as `++x` two times while directly evaluated as `1` as its final ast
   - this simplification is hard to implement too, but for practical project, this should be a serious optimization issue
+- for optimization
+  - when encountering `(subtree) (*) (0)`
+    - DON'T ignore this tree directly, cuz `subtree` may have **mutation tree** inside
+    - DO call [`generate_assembly`](./calculator_recursion/codeGen.c) on `subtree`
+      - this function recursively detecting **mutation tree** to handle it, and ignore pure **computation tree**
+      - and this is what we want!
+      - `generate_assembly` will do only necessary sub `subtree` nodes
+  - when optimizing expression for **computation tree**
+    - the tree would be like (no **mutation** here)
+      ```
+       [+]            |           [+]
+       / \            |           / \
+      1  [+]          |         [+] [+]
+         / \          |        /  | |  \
+        x  [+]        |     [+] [+] [+] [+]
+           / \        |     | | | | | | | |
+          1  [+]      |     x 1 y 1 z 1 x y
+             / \      |
+            y  [+]    |
+               / \    |
+              1  [+]  |
+                 / \  |
+                z   1 |
+      ```
+      or something else, which is impossible to solve it by simple pattern matching and node swapping
+      - assume that there is no `/`
+        - design a function to evaluate and count each categories
+        - ||const|x|y|z|a|...|
+          |:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+          |count|3|1|0|1|6|...|
+        - when encountering `*` with **constant tree**, whos value is `n`, muliply all entry value with `n`
+        - when encountering `ID` or `INT`, add/sub corresponding entry value
+        - dump the table into a new tree
+      - what if `/` is here?
+        - if a tree contains `/` subtree
+          1. recursively do sub trees of `/`, if sub trees contain no `/`
+          2. when it's done, keep the `/` tree untouched (something like add a special entry in table) and do the counting optimization on the rest of the parts
+        - the algorithm will be:
+          - for trees without `/`:
+            - do counting optimization
+            - dump
+          - for trees with `/` **rooted**:
+            - recursive call this algorithm on subtrees (subtrees may be `/` rooted or not)
+            - put the whole tree (with `/` root) into table entry
+          - for trees with `/` but not `/` **rooted**:
+            - treat `/` rooted tree as a special table entry
+            - do rest of the counting algorithm
+            - dump (for special entry, paste the tree directly)
