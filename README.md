@@ -9,6 +9,41 @@
   - for `(1 + x) + (3 + y)`, it should be simplified as `y + x + 4`
   - for `x * 3 + y - (x + y + z) * 2`, it should be simplified as `x - y - 2 * z`
   - these simplification is complicated to implement by just inspect the ast, should spend some time think about it
+- FOR `SUB rx, ry, rz` VER. in [codeGen](./calculator_recursion/codeGen.c), `asm_arithmetic`, `-` and `/` are position-sensitive, meaning that associativity is not true here
+  - we introduce depth-first recursion to avoid insufficient registers, which may cuz program to swap memory with registers (which is slow!!!)
+  - however, my solution is not optimal when there are more than 2 args in `SUB`
+    ```c
+    /// 3 args ver
+    switch() {
+    ...
+    case '-':
+      fprintf(stdout, "SUB r%d r%d r%d\n", arith_root->left->reg, arith_root->left->reg, arith_root->right->reg);
+      if (arith_root->left->reg == latter_reg)
+          fprintf(stdout, "MOV r%d r%d\n", former_reg, latter_reg);
+      break;
+    ...
+    }
+    ```
+    the last line garentee the correctness of the commitment on ***user smaller register first***
+  - there is a appliable patch, we can judge the situation (`arith_root->left->reg == latter_reg` part), and only determine the destination register
+  - so the optimized version would be
+    ```c
+    /// 3 args ver
+    switch() {
+    ...
+    case '-': {
+      fprintf(
+        stdout, "SUB r%d r%d r%d\n",
+        arith_root->left->reg == latter_reg
+          ? arith_root->right->reg
+          : arith_root->left->reg,
+        arith_root->left->reg,
+        arith_root->right->reg
+      );
+      break;
+    }
+    ...
+    ```
 - simplification when encountering `ASSIGN` tree
   - for `++x / ++x`, it should be parsed as `++x` two times while directly evaluated as `1` as its final ast
   - this simplification is hard to implement too, but for practical project, this should be a serious optimization issue
